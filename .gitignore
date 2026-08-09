@@ -1,0 +1,38 @@
+# Secrets & env
+token.json
+.env
+.env.*
+!.env.example
+
+# Caches / artefacts
+.cache/
+models/
+data/*
+!data/metrics/
+data/metrics/*
+!data/metrics/README.md
+data/voices/
+**/__pycache__/
+*.pyc
+.venv/
+venv/
+personaplex-ssl/
+*.onnx
+*.bin
+*.pt
+*.safetensors
+
+# Audio / logs
+*.wav
+*.mp3
+logs/
+*.log
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Notes sessions locales
+.drox/

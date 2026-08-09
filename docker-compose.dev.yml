@@ -1,0 +1,126 @@
+# Profil dev PC (RTX 5070 Ti 12 Go) — Ollama sur l'hôte Windows
+services:
+  tars-voice:
+    build:
+      context: ./services/voice
+      dockerfile: Dockerfile
+    image: tars-voice:dev
+    container_name: tars-voice-dev
+    ports:
+      - "9743:9743"
+    env_file:
+      - .env
+    environment:
+      - TARS_HOST=0.0.0.0
+      - TARS_PORT=9743
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - WHISPER_MODEL=${WHISPER_MODEL:-large-v3-turbo}
+      - WHISPER_DEVICE=cuda
+      - WHISPER_COMPUTE_TYPE=float16
+      - METRICS_DIR=/data/metrics
+      - COSYVOICE_URL=http://tars-tts-cosy:9750
+      - COSYVOICE_VOICES_DIR=/data/voices
+      - SEARXNG_URL=http://tars-searxng:8080
+      - DATABASE_URL=postgresql://tars:tars@tars-postgres:5432/tars
+      - CORS_ORIGINS=*
+      - WEB_UI_URL=https://localhost:3000
+    volumes:
+      - tars-models-dev:/root/.cache
+      # Métriques / runs sur l'hôte (pas un volume Docker opaque)
+      - ./data/metrics:/data/metrics
+      - ./data/voices:/data/voices
+      - ./services/voice/src:/app/src
+      - ./services/voice/static:/app/static
+    depends_on:
+      tars-tts-cosy:
+        condition: service_started
+      tars-searxng:
+        condition: service_started
+      tars-postgres:
+        condition: service_healthy
+    gpus: all
+    restart: unless-stopped
+
+  # UI Next.js HTTPS (mobile LAN) — https://localhost:3000
+  tars-web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.dev
+    image: tars-web:dev
+    container_name: tars-web-dev
+    ports:
+      - "3000:3000"
+    environment:
+      - VOICE_INTERNAL_URL=http://tars-voice:9743
+      - WATCHPACK_POLLING=true
+      - HOSTNAME=0.0.0.0
+      - PORT=3000
+      # IP LAN pour certificat HTTPS + allowedDevOrigins (ex. 192.168.1.101)
+      - HTTPS_SANS=${HTTPS_SANS:-}
+    volumes:
+      - ./apps/web/src:/app/src
+      - ./apps/web/public:/app/public
+      - ./apps/web/package.json:/app/package.json
+      - ./apps/web/server.mjs:/app/server.mjs
+      - ./apps/web/next.config.ts:/app/next.config.ts
+      - ./apps/web/tsconfig.json:/app/tsconfig.json
+      - ./apps/web/postcss.config.mjs:/app/postcss.config.mjs
+    depends_on:
+      - tars-voice
+    restart: unless-stopped
+
+  # Réglages UI / system prompt (persistants)
+  tars-postgres:
+    image: postgres:16-alpine
+    container_name: tars-postgres-dev
+    environment:
+      POSTGRES_USER: tars
+      POSTGRES_PASSWORD: tars
+      POSTGRES_DB: tars
+    ports:
+      - "5433:5432"
+    volumes:
+      - tars-postgres-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tars -d tars"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # Métamoteur de recherche (JSON API) pour l'outil web_search
+  tars-searxng:
+    image: docker.io/searxng/searxng:latest
+    container_name: tars-searxng-dev
+    ports:
+      - "8088:8080"
+    volumes:
+      - ./services/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8088/
+    restart: unless-stopped
+
+  # CosyVoice 3 (Apache-2.0) — clonage optionnel, chargé seulement si choisi dans l'UI
+  tars-tts-cosy:
+    build:
+      context: ./services/tts-cosy
+      dockerfile: Dockerfile
+    image: tars-tts-cosy:dev
+    container_name: tars-tts-cosy-dev
+    ports:
+      - "9750:9750"
+    environment:
+      - COSYVOICE_MODEL_DIR=/root/.cache/cosyvoice/Fun-CosyVoice3-0.5B
+      - COSYVOICE_ROOT=/opt/CosyVoice
+    volumes:
+      - tars-cosy-models-dev:/root/.cache
+      - ./data/voices:/data/voices
+      # Code monté en dev — rebuild image seulement si Dockerfile/requirements changent
+      - ./services/tts-cosy/src:/app/src
+    gpus: all
+    restart: unless-stopped
+
+volumes:
+  tars-models-dev:
+  tars-cosy-models-dev:
+  tars-postgres-dev:

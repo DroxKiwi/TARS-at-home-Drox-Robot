@@ -1,0 +1,106 @@
+services:
+  tars-voice:
+    build:
+      context: ./services/voice
+      dockerfile: Dockerfile
+    image: tars-voice:dev
+    container_name: tars-voice
+    ports:
+      - "${TARS_PORT:-9743}:9743"
+    env_file:
+      - .env
+    environment:
+      - TARS_HOST=0.0.0.0
+      - TARS_PORT=9743
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://172.17.0.1:11434}
+      - METRICS_DIR=/data/metrics
+      - COSYVOICE_URL=http://tars-tts-cosy:9750
+      - COSYVOICE_VOICES_DIR=/data/voices
+      - SEARXNG_URL=http://tars-searxng:8080
+      - DATABASE_URL=postgresql://tars:tars@tars-postgres:5432/tars
+      - CORS_ORIGINS=*
+      - WEB_UI_URL=https://localhost:3000
+    volumes:
+      - tars-models:/root/.cache
+      - ./data/metrics:/data/metrics
+      - ./data/voices:/data/voices
+    depends_on:
+      tars-tts-cosy:
+        condition: service_started
+      tars-searxng:
+        condition: service_started
+      tars-postgres:
+        condition: service_healthy
+    gpus: all
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  tars-web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    image: tars-web:dev
+    container_name: tars-web
+    ports:
+      - "3000:3000"
+    environment:
+      - VOICE_INTERNAL_URL=http://tars-voice:9743
+      - HOSTNAME=0.0.0.0
+      - PORT=3000
+      - HTTPS_SANS=${HTTPS_SANS:-}
+    depends_on:
+      - tars-voice
+    restart: unless-stopped
+
+  tars-postgres:
+    image: postgres:16-alpine
+    container_name: tars-postgres
+    environment:
+      POSTGRES_USER: tars
+      POSTGRES_PASSWORD: tars
+      POSTGRES_DB: tars
+    ports:
+      - "5433:5432"
+    volumes:
+      - tars-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tars -d tars"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  tars-searxng:
+    image: docker.io/searxng/searxng:latest
+    container_name: tars-searxng
+    ports:
+      - "8088:8080"
+    volumes:
+      - ./services/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8088/
+    restart: unless-stopped
+
+  tars-tts-cosy:
+    build:
+      context: ./services/tts-cosy
+      dockerfile: Dockerfile
+    # Même tag que docker-compose.dev.yml → partage le cache build (évite re-télécharger torch)
+    image: tars-tts-cosy:dev
+    container_name: tars-tts-cosy
+    ports:
+      - "9750:9750"
+    environment:
+      - COSYVOICE_MODEL_DIR=/root/.cache/cosyvoice/Fun-CosyVoice3-0.5B
+      - COSYVOICE_ROOT=/opt/CosyVoice
+    volumes:
+      - tars-cosy-models:/root/.cache
+      - ./data/voices:/data/voices
+    gpus: all
+    restart: unless-stopped
+
+volumes:
+  tars-models:
+  tars-cosy-models:
+  tars-postgres:

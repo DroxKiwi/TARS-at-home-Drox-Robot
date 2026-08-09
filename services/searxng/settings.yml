@@ -1,0 +1,57 @@
+# SearXNG — instance locale pour l'outil web_search de TARS
+# https://docs.searxng.org/admin/settings/
+use_default_settings: true
+
+general:
+  instance_name: "TARS SearXNG"
+  enable_metrics: false
+
+server:
+  secret_key: "tars-searxng-dev-change-me"
+  limiter: false
+  image_proxy: false
+  method: "GET"
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "fr"
+  # Moteurs plus stables pour appels serveur-à-serveur
+  default_doi_resolver: "oadoi.org"
+  formats:
+    - html
+    - json
+
+ui:
+  static_use_hash: true
+
+# Appels Docker (voice → searxng) : pas de reverse-proxy → pas de X-Forwarded-For
+botdetection:
+  ip_limit:
+    filter_link_local: false
+    link_token: false
+  ip_lists:
+    pass_ip:
+      - "127.0.0.0/8"
+      - "10.0.0.0/8"
+      - "172.16.0.0/12"
+      - "192.168.0.0/16"
+
+# Désactive les moteurs souvent rate-limités / captcha en usage API
+engines:
+  - name: brave
+    disabled: true
+  - name: startpage
+    disabled: true
+  - name: ahmia
+    disabled: true
+  - name: torch
+    disabled: true
+  - name: duckduckgo
+    disabled: false
+  - name: wikipedia
+    disabled: false
+  - name: wikidata
+    disabled: false
+  - name: google
+    disabled: false

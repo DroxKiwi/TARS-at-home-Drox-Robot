@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TARS Voice</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <p class="brand">TARS</p>
+      <p class="tagline">STT → Ollama → TTS · streaming</p>
+    </header>
+
+    <section class="status-row">
+      <span id="conn" class="pill">connexion…</span>
+      <span id="sessionPill" class="pill muted">session non chargée</span>
+      <span id="state" class="pill muted">idle</span>
+    </section>
+
+    <section id="configPanel" class="panel" aria-label="Configuration">
+      <h1 class="panel-title">1 · Configuration</h1>
+
+      <div class="block">
+        <h2>Persona</h2>
+        <label class="field">
+          <span>System prompt</span>
+          <textarea id="systemPrompt" rows="5"
+                    placeholder="Tu es TARS…"
+                    spellcheck="true"></textarea>
+        </label>
+        <div class="row-actions">
+          <button id="saveSettings" type="button" class="ghost">Enregistrer</button>
+          <span id="settingsHint" class="hint"></span>
+        </div>
+        <p class="hint">Persisté en Postgres — plus besoin de le remettre dans le <code>.env</code>.</p>
+      </div>
+
+      <div class="block">
+        <h2>LLM (Ollama)</h2>
+        <label class="field">
+          <span>URL serveur</span>
+          <input id="ollamaUrl" type="url" spellcheck="false" autocomplete="off"
+                 placeholder="http://host.docker.internal:11434" />
+        </label>
+        <div class="row-actions">
+          <button id="testOllama" type="button">Tester Ollama</button>
+          <span id="ollamaHint" class="hint"></span>
+        </div>
+        <label class="field" id="llmField" hidden>
+          <span>Modèle LLM</span>
+          <select id="ollamaModel" disabled></select>
+        </label>
+        <label class="check">
+          <input id="enableThinking" type="checkbox" />
+          <span>Activer le thinking (modèles raisonnement Ollama)</span>
+        </label>
+        <p class="hint">Si le modèle ne gère pas <code>think</code>, l’option est ignorée côté serveur.</p>
+      </div>
+
+      <div class="block">
+        <h2>STT</h2>
+        <label class="field">
+          <span>Modèle speech-to-text</span>
+          <select id="sttModel"></select>
+        </label>
+      </div>
+
+      <div class="block">
+        <h2>TTS</h2>
+        <label class="field">
+          <span>Moteur</span>
+          <select id="ttsBackend"></select>
+        </label>
+        <div id="kokoroOpts">
+          <label class="field">
+            <span>Voix Kokoro</span>
+            <select id="ttsVoice"></select>
+          </label>
+        </div>
+        <div id="cosyOpts" hidden>
+          <p class="hint">Clonage zero-shot (Apache-2.0) — sample WAV 3–15 s. La transcription est auto (Whisper) si tu laisses le champ vide.</p>
+          <label class="field">
+            <span>Sample audio (WAV)</span>
+            <input id="cosyPromptFile" type="file" accept="audio/wav,audio/*" />
+          </label>
+          <p id="cosyPromptHint" class="hint">Aucun sample — tu peux utiliser le démo intégré.</p>
+          <label class="field">
+            <span>Transcription du sample (optionnel)</span>
+            <textarea id="cosyPromptText" rows="2" placeholder="Laisser vide = Whisper auto…"></textarea>
+          </label>
+          <label class="check">
+            <input id="cosyUseDefault" type="checkbox" />
+            <span>Utiliser le sample démo CosyVoice (si pas de fichier)</span>
+          </label>
+          <button id="testCosy" type="button" class="ghost">Tester service CosyVoice</button>
+          <span id="cosyHealthHint" class="hint"></span>
+        </div>
+      </div>
+
+      <div class="load-zone">
+        <button id="loadSession" type="button" disabled>Charger en VRAM</button>
+        <ul id="loadSteps" class="steps" hidden></ul>
+        <p id="loadError" class="error" hidden></p>
+      </div>
+    </section>
+
+    <section id="chatPanel" class="panel" hidden aria-label="Discussion">
+      <div class="chat-header">
+        <h1 class="panel-title">2 · Discussion</h1>
+        <button id="reconfig" type="button" class="ghost">Modifier la config</button>
+      </div>
+      <p id="activeModels" class="active-models"></p>
+
+      <label class="check inline">
+        <input id="enableThinkingLive" type="checkbox" />
+        <span>Thinking pendant le chat</span>
+      </label>
+
+      <div class="controls">
+        <button id="chatToggle" type="button" disabled>Démarrer le chat</button>
+      </div>
+
+      <div class="transcripts">
+        <div>
+          <h2>Vous</h2>
+          <p id="userText" class="bubble">—</p>
+        </div>
+        <div id="thinkingBlock" hidden>
+          <h2>Thinking</h2>
+          <p id="thinkingText" class="bubble thinking">—</p>
+        </div>
+        <div>
+          <h2>TARS</h2>
+          <p id="agentText" class="bubble">—</p>
+        </div>
+      </div>
+
+      <aside class="shape-panel" aria-label="Panneau géométrique (tools)">
+        <div class="shape-panel-head">
+          <h2>Panneau</h2>
+          <span id="toolHint" class="hint">En attente d’un outil…</span>
+        </div>
+        <canvas id="shapeCanvas" width="320" height="220"></canvas>
+      </aside>
+
+      <details id="metricsPanel" class="metrics-panel" open>
+        <summary>Métriques latence (dev)</summary>
+        <div id="metricsLive" class="metrics-live hint">En attente d’un tour…</div>
+        <pre id="metricsDetail" class="metrics-detail">—</pre>
+        <div id="metricsHistory" class="metrics-history"></div>
+      </details>
+
+      <p id="error" class="error" hidden></p>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
